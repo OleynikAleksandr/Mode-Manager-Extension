@@ -159,21 +159,100 @@ function parseStacksData(stacksContent: string): StacksData {
 
 
 function App() {
-    const [orderedSelectedModeObjects, setOrderedSelectedModeObjects] = useState<StackMode[]>([]); // For UI rendering of chips and list
-    const [selectedAndOrderedSlugs, setSelectedAndOrderedSlugs] = useState<string[]>([]); // Source of truth for selection & order
+    // --- BEGIN STATE LOGGING ---
+    const [orderedSelectedModeObjects, _setOrderedSelectedModeObjects] = useState<StackMode[]>([]);
+    const [selectedAndOrderedSlugs, _setSelectedAndOrderedSlugs] = useState<string[]>([]);
+    const [stacksData, _setStacksData] = useState<StacksData>({
+        generalPurpose: { id: 'general', title: '', description: '', subgroups: [] },
+        frameworks: []
+    });
+    const [selectedStackModeIds, _setSelectedStackModeIds] = useState<Set<string>>(new Set());
+
+    const setOrderedSelectedModeObjects = (value: React.SetStateAction<StackMode[]>) => {
+        console.log('[StateSetter] setOrderedSelectedModeObjects called. New value (or updater):', value);
+        if (typeof value === 'function') {
+            _setOrderedSelectedModeObjects(prev => {
+                const newValue = value(prev);
+                console.log('[StateSetter] setOrderedSelectedModeObjects (updater) - prev:', JSON.parse(JSON.stringify(prev)), 'new:', JSON.parse(JSON.stringify(newValue)));
+                return newValue;
+            });
+        } else {
+            console.log('[StateSetter] setOrderedSelectedModeObjects - new value:', JSON.parse(JSON.stringify(value)));
+            _setOrderedSelectedModeObjects(value);
+        }
+    };
+
+    const setSelectedAndOrderedSlugs = (value: React.SetStateAction<string[]>) => {
+        console.log('[StateSetter] setSelectedAndOrderedSlugs called. New value (or updater):', value);
+        if (typeof value === 'function') {
+            _setSelectedAndOrderedSlugs(prev => {
+                const newValue = value(prev);
+                console.log('[StateSetter] setSelectedAndOrderedSlugs (updater) - prev:', JSON.parse(JSON.stringify(prev)), 'new:', JSON.parse(JSON.stringify(newValue)));
+                return newValue;
+            });
+        } else {
+            console.log('[StateSetter] setSelectedAndOrderedSlugs - new value:', JSON.parse(JSON.stringify(value)));
+            _setSelectedAndOrderedSlugs(value);
+        }
+    };
+    
+    const setStacksData = (value: React.SetStateAction<StacksData>) => {
+        console.log('[StateSetter] setStacksData called. New value (or updater):', value);
+        if (typeof value === 'function') {
+            _setStacksData(prev => {
+                // Note: Logging prev and newValue for StacksData can be very verbose
+                console.log('[StateSetter] setStacksData (updater) - attempting to apply update.'); 
+                const newValue = value(prev);
+                console.log('[StateSetter] setStacksData (updater) - new value computed.');
+                // console.log('[StateSetter] setStacksData (updater) - prev (summary):', { generalPurposeSubgroups: prev.generalPurpose.subgroups.length, frameworks: prev.frameworks.length });
+                // console.log('[StateSetter] setStacksData (updater) - new (summary):', { generalPurposeSubgroups: newValue.generalPurpose.subgroups.length, frameworks: newValue.frameworks.length });
+                return newValue;
+            });
+        } else {
+            console.log('[StateSetter] setStacksData - new value (summary):', { generalPurposeSubgroups: value.generalPurpose.subgroups.length, frameworks: value.frameworks.length });
+            _setStacksData(value);
+        }
+    };
+
+    const setSelectedStackModeIds = (value: React.SetStateAction<Set<string>>) => {
+        console.log('[StateSetter] setSelectedStackModeIds called. New value (or updater):', value);
+        if (typeof value === 'function') {
+            _setSelectedStackModeIds(prev => {
+                const newValue = value(prev);
+                console.log('[StateSetter] setSelectedStackModeIds (updater) - prev:', JSON.parse(JSON.stringify(Array.from(prev))), 'new:', JSON.parse(JSON.stringify(Array.from(newValue))));
+                return newValue;
+            });
+        } else {
+            console.log('[StateSetter] setSelectedStackModeIds - new value:', JSON.parse(JSON.stringify(Array.from(value))));
+            _setSelectedStackModeIds(value);
+        }
+    };
+    // --- END STATE LOGGING WRAPPERS ---
+
+    // Actual state variables are now accessed via the original names for the rest of the component
+    // const [orderedSelectedModeObjects, setOrderedSelectedModeObjects] = useState<StackMode[]>([]); // For UI rendering of chips and list
+    // const [selectedAndOrderedSlugs, setSelectedAndOrderedSlugs] = useState<string[]>([]); // Source of truth for selection & order
     const [currentLanguage, setCurrentLanguage] = useState<string>('en');
     const [initialSelectedSlugs, setInitialSelectedSlugs] = useState<string[]>([]); // For cancel functionality
     const [activeTab, setActiveTab] = useState<number>(0); // 0 - Stacks By Framework, 1 - New Tab (Empty)
     const [firstLoad, setFirstLoad] = useState<boolean>(true);
 
-    // New state for Stacks By Framework tab
-    const [stacksData, setStacksData] = useState<StacksData>({
-        generalPurpose: { id: 'general', title: '', description: '', subgroups: [] },
-        frameworks: []
-    });
-    const [selectedStackModeIds, setSelectedStackModeIds] = useState<Set<string>>(new Set());
+    // New state for Stacks By Framework tab, using original _setters for direct use
+    // const [stacksData, _setStacksData] = useState<StacksData>({ // already defined above
+    //     generalPurpose: { id: 'general', title: '', description: '', subgroups: [] },
+    //     frameworks: []
+    // });
+    // const [selectedStackModeIds, _setSelectedStackModeIds] = useState<Set<string>>(new Set()); // already defined above
     const [isStacksLoading, setIsStacksLoading] = useState<boolean>(true);
     const [stacksError, setStacksError] = useState<string | null>(null);
+
+    // Log initial state on each render
+    console.log('[App Render] stacksData (summary):', { gpCount: stacksData.generalPurpose.subgroups.length, fwCount: stacksData.frameworks.length });
+    // For more detail, uncomment below but be wary of large logs:
+    // try { console.log('[App Render] stacksData (full):', JSON.parse(JSON.stringify(stacksData))); } catch (e) { console.log('[App Render] stacksData (full): Error stringifying', e); }
+    console.log('[App Render] selectedStackModeIds:', JSON.parse(JSON.stringify(Array.from(selectedStackModeIds))));
+    console.log('[App Render] selectedAndOrderedSlugs:', JSON.parse(JSON.stringify(selectedAndOrderedSlugs)));
+
 
     const updateButtonStates = useCallback(() => {
         // Логика сравнения initial и current состояний для активности кнопок
@@ -194,25 +273,25 @@ function App() {
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             const message = event.data;
-            console.log('React App: Received message:', message);
+            console.log('[useEffect handleMessage] React App: Received message:', message); // Added prefix
             switch (message.command) {
                 case 'loadStacks':
                     setIsStacksLoading(false);
                     setStacksError(null);
                     const parsedStacks = parseStacksData(message.data);
-                    console.log('React App: Parsed stacks data:', parsedStacks);
+                    console.log('[useEffect handleMessage] Parsed stacks data:', JSON.parse(JSON.stringify(parsedStacks))); // Added prefix and stringify
                     setStacksData(parsedStacks);
 
                     if (firstLoad) {
-                        console.log('React App: First load, processing selectedModesOrdered from extension:', message.selectedModesOrdered);
+                        console.log('[useEffect handleMessage] First load, processing selectedModesOrdered from extension:', message.selectedModesOrdered); // Added prefix
                         const slugsFromExtension: string[] = (message.selectedModesOrdered || [])
                             .sort((a: { slug: string, order: number }, b: { slug: string, order: number }) => a.order - b.order)
                             .map((item: { slug: string, order: number }) => item.slug);
 
-                        setSelectedAndOrderedSlugs(slugsFromExtension);
-                        setInitialSelectedSlugs([...slugsFromExtension]); // For cancel
+                        setSelectedAndOrderedSlugs(slugsFromExtension); // Wrapped setter will log
+                        setInitialSelectedSlugs([...slugsFromExtension]); // This is a direct state update, not wrapped. Fine for this.
                         setFirstLoad(false); // Ensure this is set to false after processing
-                        console.log('React App: First load processed. Selected slugs set to:', slugsFromExtension);
+                        console.log('[useEffect handleMessage] First load processed. Selected slugs set to:', slugsFromExtension); // Added prefix
                     }
                     break;
                 case 'loadStacksError':
@@ -264,44 +343,63 @@ function App() {
 
     // UNIFIED: Single handler for selection - uses slug-based selection
     const handleUnifiedModeSelection = useCallback((slug: string, isSelected: boolean) => {
-        console.log('handleUnifiedModeSelection:', slug, isSelected);
+        console.log('[handleUnifiedModeSelection Entry] slug:', slug, 'isSelected:', isSelected);
+        console.log('[handleUnifiedModeSelection] selectedAndOrderedSlugs BEFORE update:', JSON.parse(JSON.stringify(selectedAndOrderedSlugs)));
         setSelectedAndOrderedSlugs(prevSlugs => {
+            console.log('[handleUnifiedModeSelection Setter] prevSlugs:', JSON.parse(JSON.stringify(prevSlugs)));
+            let newSlugsArray;
             if (isSelected) {
                 if (!prevSlugs.includes(slug)) {
-                    return [...prevSlugs, slug];
+                    newSlugsArray = [...prevSlugs, slug];
+                } else {
+                    newSlugsArray = prevSlugs;
                 }
-                return prevSlugs;
             } else {
-                return prevSlugs.filter(s => s !== slug);
+                newSlugsArray = prevSlugs.filter(s => s !== slug);
             }
+            console.log('[handleUnifiedModeSelection Setter] newSlugsArray:', JSON.parse(JSON.stringify(newSlugsArray)));
+            return newSlugsArray;
         });
-    }, []);
+        // Note: Cannot log selectedAndOrderedSlugs AFTER update here directly due to async nature of setState
+    }, [selectedAndOrderedSlugs]); // Added selectedAndOrderedSlugs to dep array, critical for correct closure
 
     // UNIFIED: Batch handler for multiple slugs (for subgroups)
     const handleUnifiedBatchModeSelection = useCallback((slugs: string[], isSelected: boolean) => {
-        console.log('handleUnifiedBatchModeSelection:', slugs, isSelected);
+        console.log('[handleUnifiedBatchModeSelection Entry] slugs:', slugs, 'isSelected:', isSelected);
+        console.log('[handleUnifiedBatchModeSelection] selectedAndOrderedSlugs BEFORE update:', JSON.parse(JSON.stringify(selectedAndOrderedSlugs)));
         setSelectedAndOrderedSlugs(prevSlugs => {
+            console.log('[handleUnifiedBatchModeSelection Setter] prevSlugs:', JSON.parse(JSON.stringify(prevSlugs)));
+            let newSlugsArray;
             if (isSelected) {
-                // Add all slugs that are not already in the array
-                const newSlugs = slugs.filter(slug => !prevSlugs.includes(slug));
-                return [...prevSlugs, ...newSlugs];
+                const newSlugsToAdd = slugs.filter(slug => !prevSlugs.includes(slug));
+                newSlugsArray = [...prevSlugs, ...newSlugsToAdd];
             } else {
-                // Remove all specified slugs
-                return prevSlugs.filter(slug => !slugs.includes(slug));
+                newSlugsArray = prevSlugs.filter(slug => !slugs.includes(slug));
             }
+            console.log('[handleUnifiedBatchModeSelection Setter] newSlugsArray:', JSON.parse(JSON.stringify(newSlugsArray)));
+            return newSlugsArray;
         });
-    }, []);
+         // Note: Cannot log selectedAndOrderedSlugs AFTER update here directly
+    }, [selectedAndOrderedSlugs]); // Added selectedAndOrderedSlugs to dep array
 
     // This useEffect updates the UI-specific state (Mode objects and Set of Ids)
     // whenever the source of truth (selectedAndOrderedSlugs) or available modes (modesData/stacksData) changes.
     useEffect(() => {
-        console.log('React App: Rebuilding unified selection state. Slugs:', selectedAndOrderedSlugs);
+        console.log('[useEffect SyncSlugs Update Entry] selectedAndOrderedSlugs:', JSON.parse(JSON.stringify(selectedAndOrderedSlugs)));
+        console.log('[useEffect SyncSlugs Update Entry] stacksData (summary):', { gpCount: stacksData.generalPurpose.subgroups.length, fwCount: stacksData.frameworks.length });
+        // try { console.log('[useEffect SyncSlugs Update Entry] stacksData (full):', JSON.parse(JSON.stringify(stacksData))); } catch (e) { console.log('[useEffect SyncSlugs Update Entry] stacksData stringify error', e); }
+
 
         const newOrderedObjects: StackMode[] = [];
         const newSelectedStackModeIds = new Set<string>();
 
         // Get all available modes from stacksData
         const allStackModes = getAllStackModes();
+        console.log('[useEffect SyncSlugs Update] allStackModes count:', allStackModes.length);
+        if (stacksData.frameworks.length === 0 && stacksData.generalPurpose.subgroups.length === 0 && selectedAndOrderedSlugs.length > 0) {
+            console.warn('[useEffect SyncSlugs Update] stacksData appears empty but selectedAndOrderedSlugs is not. This might lead to issues.');
+        }
+
 
         // Update selectedStackModeIds for Stack Modes - check by slug
         const updateStackModeIds = (subgroups: StackSubgroup[]) => {
@@ -319,21 +417,14 @@ function App() {
 
         // Build ordered objects for chips from stack modes
         selectedAndOrderedSlugs.forEach(slug => {
-            const mode = allStackModes.find(m => m.slug === slug);
-            if (mode) {
-                // Push the original StackMode object, not the potentially ID-altered one from stackModeToMode,
-                // unless stackModeToMode is essential for other properties.
-                // For consistency, let's find the original mode from stacksData directly or ensure getAllStackModes returns original IDs.
-                // The current getAllStackModes returns `unified-${slug}` as ID. Let's adjust.
-                const originalMode = findOriginalStackModeBySlug(slug, stacksData);
-                if (originalMode) {
-                    newOrderedObjects.push(originalMode);
-                } else {
-                     console.warn(`React App: Slug "${slug}" not found in stacksData during UI rebuild for ordered objects.`);
-                }
+            // const mode = allStackModes.find(m => m.slug === slug); // This uses allStackModes which have unified IDs
+            const originalMode = findOriginalStackModeBySlug(slug, stacksData); // Correctly uses original stacksData
+            if (originalMode) {
+                newOrderedObjects.push(originalMode);
             } else {
-                console.warn(`React App: Slug "${slug}" not found in allStackModes during UI rebuild.`);
+                 console.warn(`[useEffect SyncSlugs Update] Slug "${slug}" not found in stacksData during UI rebuild for ordered objects.`);
             }
+            // Removed the part that logged about allStackModes because it's less relevant now with findOriginalStackModeBySlug
         });
         
         // Helper to find original StackMode to preserve original IDs for chips
@@ -352,11 +443,14 @@ function App() {
         };
 
 
-        console.log('React App: Before setState - Stack IDs:', newSelectedStackModeIds);
-        setOrderedSelectedModeObjects(newOrderedObjects);
-        setSelectedStackModeIds(newSelectedStackModeIds); // This is critical for subgroup checkbox state
-        console.log('React App: Unified selection state updated. Objects:', newOrderedObjects.length, 'Stack IDs:', newSelectedStackModeIds.size);
-    }, [selectedAndOrderedSlugs, stacksData, getAllStackModes]); // Added stacksData dependency
+        console.log('[useEffect SyncSlugs Update] Calculated newSelectedStackModeIds:', JSON.parse(JSON.stringify(Array.from(newSelectedStackModeIds))));
+        console.log('[useEffect SyncSlugs Update] Calculated newOrderedSelectedModeObjects count:', newOrderedObjects.length/*, JSON.parse(JSON.stringify(newOrderedObjects))*/);
+        
+        setOrderedSelectedModeObjects(newOrderedObjects); // Wrapped setter will log
+        setSelectedStackModeIds(newSelectedStackModeIds); // Wrapped setter will log
+        
+        console.log('[useEffect SyncSlugs Update] Finished rebuilding unified selection state.');
+    }, [selectedAndOrderedSlugs, stacksData, getAllStackModes]); // Added stacksData dependency. getAllStackModes depends on stacksData.
 
     const handleApply = () => {
         const selectedModesWithOrder = selectedAndOrderedSlugs.map((slug, index) => ({
@@ -386,9 +480,12 @@ function App() {
 
     // Handlers for stacks selection (now redirects to unified handler)
     const handleStackModeSelection = (modeId: string, isSelected: boolean) => {
-        // Find the stack mode by ID and get its slug
+        console.log('[handleStackModeSelection Entry] modeId:', modeId, 'isSelected:', isSelected);
+        // Log selectedAndOrderedSlugs BEFORE it's (indirectly) updated
+        // This is tricky because the actual update happens after handleUnifiedModeSelection's own async update.
+        // The log inside handleUnifiedModeSelection for "BEFORE update" is more accurate for its direct action.
+        
         let targetSlug: string | null = null;
-
         // Search in general purpose
         for (const subgroup of stacksData.generalPurpose.subgroups) {
             const found = subgroup.modes.find(mode => mode.id === modeId);
@@ -397,7 +494,6 @@ function App() {
                 break;
             }
         }
-
         // Search in frameworks if not found
         if (!targetSlug) {
             for (const framework of stacksData.frameworks) {
@@ -413,74 +509,78 @@ function App() {
         }
 
         if (targetSlug) {
+            console.log('[handleStackModeSelection] Found slug:', targetSlug, 'for modeId:', modeId, '. Calling handleUnifiedModeSelection.');
             handleUnifiedModeSelection(targetSlug, isSelected);
+        } else {
+            console.warn('[handleStackModeSelection] No slug found for modeId:', modeId);
         }
+        // Logging selectedAndOrderedSlugs AFTER update is not feasible here due to async nature of updates.
+        // The main useEffect SyncSlugs will log the result.
     };
 
     const handleSubgroupSelection = (subgroupId: string, isSelected: boolean) => {
-        console.log('=== handleSubgroupSelection START ===');
-        console.log('subgroupId:', subgroupId, 'isSelected:', isSelected);
+        console.log('[handleSubgroupSelection Entry] subgroupId:', subgroupId, 'isSelected:', isSelected);
+        // Log stacksData before any potential modification by updateSubgroupSelection
+        // However, updateSubgroupSelection is called later, triggered by selectedStackModeIds change.
+        // So, we log current stacksData here as a baseline.
+        console.log('[handleSubgroupSelection] stacksData BEFORE (summary):', { gpSgCount: stacksData.generalPurpose.subgroups.length, fwCount: stacksData.frameworks.length });
+        // try { console.log('[handleSubgroupSelection] stacksData BEFORE (full):', JSON.parse(JSON.stringify(stacksData))); } catch(e) { console.error("Error stringifying stacksData", e); }
+        console.log('[handleSubgroupSelection] selectedAndOrderedSlugs BEFORE update:', JSON.parse(JSON.stringify(selectedAndOrderedSlugs)));
 
-        // Find the subgroup and toggle all its modes using unified system
         let targetSubgroup: StackSubgroup | null = null;
-
-        // Search in frameworks first (most likely location)
+        // Search in frameworks first
         for (const framework of stacksData.frameworks) {
             const found = framework.subgroups.find(sg => sg.id === subgroupId);
-            if (found) {
-                targetSubgroup = found;
-                console.log('Found targetSubgroup in framework:', framework.title);
-                break;
-            }
+            if (found) { targetSubgroup = found; break; }
         }
-
         // Search in general purpose if not found
-        if (!targetSubgroup && stacksData.generalPurpose.subgroups) {
+        if (!targetSubgroup) {
             targetSubgroup = stacksData.generalPurpose.subgroups.find(sg => sg.id === subgroupId) || null;
-            if (targetSubgroup) {
-                console.log('Found targetSubgroup in general purpose');
-            }
         }
 
         if (!targetSubgroup) {
-            console.error('ERROR: No targetSubgroup found for subgroupId:', subgroupId);
-            console.log('Available subgroups:');
-            stacksData.frameworks.forEach(fw => {
-                console.log(`Framework: ${fw.title}`);
-                fw.subgroups.forEach(sg => console.log(`  - ${sg.id} (${sg.fullTitle})`));
-            });
+            console.error('[handleSubgroupSelection] ERROR: No targetSubgroup found for subgroupId:', subgroupId);
+            // Log available subgroups for easier debugging
+            const availableFrameworkSubgroups = stacksData.frameworks.map(f => ({ fw: f.title, sg: f.subgroups.map(s => s.id) }));
+            const availableGeneralSubgroups = stacksData.generalPurpose.subgroups.map(s => s.id);
+            console.log('[handleSubgroupSelection] Available Framework Subgroups:', availableFrameworkSubgroups);
+            console.log('[handleSubgroupSelection] Available General Subgroups:', availableGeneralSubgroups);
             return;
         }
 
-        console.log('Target subgroup:', targetSubgroup.fullTitle);
-        console.log('Modes in subgroup:', targetSubgroup.modes.length);
+        console.log('[handleSubgroupSelection] Target subgroup:', targetSubgroup.fullTitle, 'current modes count:', targetSubgroup.modes.length);
 
-        // Use unified batch system - toggle all modes by slug in one operation
         const slugsToToggle = targetSubgroup.modes.map(mode => mode.slug);
-        console.log(`Batch ${isSelected ? 'SELECTING' : 'DESELECTING'} slugs:`, slugsToToggle);
-        handleUnifiedBatchModeSelection(slugsToToggle, isSelected);
+        console.log(`[handleSubgroupSelection] Batch ${isSelected ? 'SELECTING' : 'DESELECTING'} slugs:`, slugsToToggle);
+        handleUnifiedBatchModeSelection(slugsToToggle, isSelected); // This will update selectedAndOrderedSlugs
 
-        console.log('=== handleSubgroupSelection END ===');
+        // Note: stacksData is NOT directly modified here. updateSubgroupSelection will be triggered
+        // by the change in selectedStackModeIds, which itself is triggered by selectedAndOrderedSlugs changing.
+        // The main useEffect SyncSlugs will log changes to selectedAndOrderedSlugs.
+        console.log('[handleSubgroupSelection Exit]');
     };
 
     const updateSubgroupSelection = useCallback(() => {
-        console.log('updateSubgroupSelection called, selectedStackModeIds:', selectedStackModeIds);
+        console.log('[updateSubgroupSelection Entry] selectedStackModeIds:', JSON.parse(JSON.stringify(Array.from(selectedStackModeIds))));
         setStacksData(prev => {
+            console.log('[updateSubgroupSelection Setter] prev stacksData (summary):', { gpSgCount: prev.generalPurpose.subgroups.length, fwCount: prev.frameworks.length });
             // Manual deep clone to ensure modes arrays are preserved
             const manuallyClonedGeneralPurposeSubgroups = prev.generalPurpose.subgroups.map(sg => ({
                 ...sg,
-                modes: sg.modes.map(m => ({ ...m })), // Clone each mode
-                selected: false, // Will be recalculated
-                partiallySelected: false, // Will be recalculated
+                ...sg,
+                // Ensure modes is an array before mapping, defensively.
+                modes: Array.isArray(sg.modes) ? sg.modes.map(m => ({ ...m })) : [], 
+                selected: false, 
+                partiallySelected: false, 
             }));
 
             const manuallyClonedFrameworks = prev.frameworks.map(fw => ({
                 ...fw,
                 subgroups: fw.subgroups.map(sg => ({
                     ...sg,
-                    modes: sg.modes.map(m => ({ ...m })), // Clone each mode
-                    selected: false, // Will be recalculated
-                    partiallySelected: false, // Will be recalculated
+                    modes: Array.isArray(sg.modes) ? sg.modes.map(m => ({ ...m })) : [], 
+                    selected: false, 
+                    partiallySelected: false, 
                 })),
             }));
             
@@ -494,34 +594,31 @@ function App() {
 
             const updateSelectionStatesInFramework = (framework: StackFramework) => {
                 framework.subgroups.forEach(subgroup => {
-                    // Ensure subgroup.modes is an array before filtering
                     const modesArray = Array.isArray(subgroup.modes) ? subgroup.modes : [];
                     const selectedCount = modesArray.filter(mode =>
-                        selectedStackModeIds.has(mode.id)
+                        selectedStackModeIds.has(mode.id) // selectedStackModeIds is from the outer scope, captured by useCallback
                     ).length;
 
                     subgroup.selected = selectedCount === modesArray.length && modesArray.length > 0;
                     subgroup.partiallySelected = selectedCount > 0 && selectedCount < modesArray.length;
                     
-                    console.log(`Subgroup ${subgroup.id} (${subgroup.fullTitle}): selectedCount=${selectedCount}, totalCount=${modesArray.length}, selected=${subgroup.selected}, partiallySelected=${subgroup.partiallySelected}, Modes:`, JSON.stringify(modesArray.map(m => m.slug)));
+                    // console.log(`[updateSubgroupSelection] Subgroup ${subgroup.id} (${subgroup.fullTitle}): selectedCount=${selectedCount}, totalCount=${modesArray.length}, selected=${subgroup.selected}, partiallySelected=${subgroup.partiallySelected}, Modes Slugs:`, JSON.stringify(modesArray.map(m => m.slug)));
                 });
             };
 
             updateSelectionStatesInFramework(updatedStacksData.generalPurpose);
             updatedStacksData.frameworks.forEach(updateSelectionStatesInFramework);
             
-            // --- Debugging Start ---
-            console.log('DEBUG: updateSubgroupSelection - updated object:', JSON.stringify(updatedStacksData, null, 2));
+            console.log('[updateSubgroupSelection Setter] updatedStacksData (summary):', { gpSgCount: updatedStacksData.generalPurpose.subgroups.length, fwCount: updatedStacksData.frameworks.length });
+            // try { console.log('[updateSubgroupSelection Setter] updatedStacksData (full):', JSON.parse(JSON.stringify(updatedStacksData))); } catch (e) { console.error("Error stringifying updatedStacksData", e); }
             if (updatedStacksData.frameworks.some((fw: StackFramework) => !fw.subgroups || fw.subgroups.some((sg: StackSubgroup) => !sg.modes || !Array.isArray(sg.modes)))) {
-                console.error('DEBUG: updateSubgroupSelection - Problem detected: modes/subgroups missing or not arrays before return');
+                console.error('[updateSubgroupSelection Setter] Problem detected: modes/subgroups missing or not arrays before return');
             } else {
-                console.log('DEBUG: updateSubgroupSelection - No problem detected with modes/subgroups arrays before return.');
+                // console.log('[updateSubgroupSelection Setter] No problem detected with modes/subgroups arrays before return.');
             }
-            // --- Debugging End ---
-
             return updatedStacksData;
         });
-    }, [selectedStackModeIds]);
+    }, [selectedStackModeIds]); // Dependency on selectedStackModeIds is key
 
     // Load stacks data on tab switch
     useEffect(() => {
@@ -532,20 +629,14 @@ function App() {
 
     // Update subgroup states when selectedStackModeIds changes
     useEffect(() => {
+        console.log('[useEffect updateSubgroupStates] selectedStackModeIds changed, calling updateSubgroupSelection. current selectedStackModeIds:', JSON.parse(JSON.stringify(Array.from(selectedStackModeIds))));
         updateSubgroupSelection();
-    }, [selectedStackModeIds]);
+    }, [selectedStackModeIds, updateSubgroupSelection]); // updateSubgroupSelection is included as it's a useCallback dependency
 
-    // Update subgroup states when stacksData changes (e.g., language switch)
-    useEffect(() => {
-        if (stacksData.frameworks.length > 0 || stacksData.generalPurpose.subgroups.length > 0) {
-            console.log('stacksData changed, updating subgroup selection states');
-            // updateSubgroupSelection is already called when selectedStackModeIds changes,
-            // and selectedStackModeIds changes when selectedAndOrderedSlugs or stacksData changes.
-            // Explicit call here might be redundant if dependencies are set up correctly.
-            // However, ensuring it runs after stacksData is fully parsed and set is good.
-            updateSubgroupSelection();
-        }
-    }, [stacksData, updateSubgroupSelection]); // updateSubgroupSelection is a dependency here
+    // Removed the useEffect that called updateSubgroupSelection based on [stacksData, updateSubgroupSelection]
+    // as it was largely redundant. Changes to stacksData (like language change) will trigger
+    // the main useEffect to rebuild selectedStackModeIds if necessary, which in turn
+    // calls updateSubgroupSelection via the effect above. Initial load is also covered.
 
     const sensors = useSensors(
         useSensor(PointerSensor),
