@@ -2,7 +2,7 @@
     "name": "mode-manager-extension",
     "displayName": "Mode Manager Extension",
     "description": "Manages and allows switching between different Roo modes.",
-    "version": "0.3.7",
+    "version": "0.4.0",
     "publisher": "publisherName",
     "icon": "images/Icon.png",
     "repository": {
