@@ -17,16 +17,6 @@ import {
 import { SortableModeChip } from './components/SortableModeChip'; // Импортируем наш новый компонент
 
 // --- Типы ---
-interface Mode {
-    id: string;
-    slug: string;
-    fullText: string;
-    nameWithIcon: string;
-    description: string;
-    icon?: string;
-    name: string;
-}
-
 // New types for Stacks By Framework
 interface StackMode {
     id: string;
@@ -69,53 +59,6 @@ interface VSCodeApi {
 const vscode: VSCodeApi = acquireVsCodeApi();
 
 // --- Вспомогательные функции ---
-function parseModes(listContent: string): Mode[] {
-    if (!listContent || typeof listContent !== 'string') {
-        console.warn('parseModes: listContent is null, undefined, or not a string. Returning empty array.');
-        return [];
-    }
-    const modes: Mode[] = [];
-    const lines = listContent.split('\n');
-    /*
-     * Расширяем регулярное выражение, чтобы корректно обрабатывать разные типы дефиса
-     * (обычный '-', en-dash '–', em-dash '—'). Эта гибкость необходима, поскольку
-     * локализованные файлы списков режимов могут использовать различные символы.
-     */
-    const modeRegex = /^\s*(\d+)\.\s*(?:([\u2000-\u3300\uE000-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF\s]+?)\s+)?(.+?)\s+\(([^)]+)\)\s*[-–—]\s*(.+)/;
-
-    lines.forEach((line, index) => {
-        line = line.trim();
-        if (!line) return;
-
-        const match = line.match(modeRegex);
-        const id = `mode-line-${index}`;
-        if (match) {
-            const icon = match[2] ? match[2].trim() : undefined;
-            const name = match[3].trim();
-            const slug = match[4].trim();
-            const description = match[5].trim();
-            const nameWithIcon = icon ? `${icon} ${name}` : name;
-            modes.push({ id, slug, fullText: line, nameWithIcon, description, icon, name });
-        } else {
-            console.warn(`Line did not match regex for slug extraction: "${line}". Creating a basic entry without slug.`);
-            const fallbackSlug = `unknown-slug-${index}`;
-            // Упрощённый регекс также должен учитывать различные символы дефиса
-            const simpleModeRegex = /^\s*(\d+)\.\s*(?:([\u2000-\u3300\uE000-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF\s]+?)\s+)?(.+?)\s*[-–—]\s*(.+)/;
-            const simpleMatch = line.match(simpleModeRegex);
-            if (simpleMatch) {
-                const icon = simpleMatch[2] ? simpleMatch[2].trim() : undefined;
-                const name = simpleMatch[3].trim();
-                const description = simpleMatch[4].trim();
-                const nameWithIcon = icon ? `${icon} ${name}` : name;
-                modes.push({ id, slug: fallbackSlug, fullText: line, nameWithIcon, description, icon, name });
-            } else {
-                modes.push({ id, slug: fallbackSlug, fullText: line, nameWithIcon: line, description: '', name: line });
-            }
-        }
-    });
-    return modes;
-}
-
 // Parser for stacks data
 function parseStacksData(stacksContent: string): StacksData {
     if (!stacksContent || typeof stacksContent !== 'string') {
@@ -216,16 +159,11 @@ function parseStacksData(stacksContent: string): StacksData {
 
 
 function App() {
-    const [modesData, setModesData] = useState<Mode[]>([]);
-    const [currentSelectedModeIds, setCurrentSelectedModeIds] = useState<Set<string>>(new Set());
-    const [orderedSelectedModeObjects, setOrderedSelectedModeObjects] = useState<Mode[]>([]); // For UI rendering of chips and list
+    const [orderedSelectedModeObjects, setOrderedSelectedModeObjects] = useState<StackMode[]>([]); // For UI rendering of chips and list
     const [selectedAndOrderedSlugs, setSelectedAndOrderedSlugs] = useState<string[]>([]); // Source of truth for selection & order
     const [currentLanguage, setCurrentLanguage] = useState<string>('en');
     const [initialSelectedSlugs, setInitialSelectedSlugs] = useState<string[]>([]); // For cancel functionality
-    const [activeTab, setActiveTab] = useState<number>(0); // 0 - Custom Modes, 1 - Stacks By Framework
-    // initialSelectedModeIds and initialOrderedSelectedModeObjects are no longer primary for cancel
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<number>(0); // 0 - Stacks By Framework, 1 - New Tab (Empty)
     const [firstLoad, setFirstLoad] = useState<boolean>(true);
 
     // New state for Stacks By Framework tab
@@ -236,16 +174,6 @@ function App() {
     const [selectedStackModeIds, setSelectedStackModeIds] = useState<Set<string>>(new Set());
     const [isStacksLoading, setIsStacksLoading] = useState<boolean>(true);
     const [stacksError, setStacksError] = useState<string | null>(null);
-
-
-    const MOCK_MODES_DATA_FALLBACK = `
-# Roo Modes List (Fallback)
-
-## Roo Modes
-
-1. **👑 Roo Commander (roo-commander)** - Fallback description.
-2. **💻 Code (code)** - Fallback description.
-`;
 
     const updateButtonStates = useCallback(() => {
         // Логика сравнения initial и current состояний для активности кнопок
@@ -259,22 +187,21 @@ function App() {
 
     useEffect(() => {
         vscode.postMessage({ command: 'webviewReady' });
-    }, []);
+        // Request stacks data on initial load
+        vscode.postMessage({ command: 'requestStacksList', lang: currentLanguage });
+    }, [currentLanguage]); // Added currentLanguage dependency
 
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             const message = event.data;
             console.log('React App: Received message:', message);
             switch (message.command) {
-                case 'loadModes':
-                    setIsLoading(false);
-                    setError(null);
-                    const parsed = parseModes(message.data);
-                    console.log('React App: Parsed modes data:', parsed); // <-- Новый лог
-                    setModesData(parsed);
-                    const newLanguage = message.language || 'en';
-                    setCurrentLanguage(newLanguage);
-                    setModesData(parsed); // Update available modes
+                case 'loadStacks':
+                    setIsStacksLoading(false);
+                    setStacksError(null);
+                    const parsedStacks = parseStacksData(message.data);
+                    console.log('React App: Parsed stacks data:', parsedStacks);
+                    setStacksData(parsedStacks);
 
                     if (firstLoad) {
                         console.log('React App: First load, processing selectedModesOrdered from extension:', message.selectedModesOrdered);
@@ -284,23 +211,9 @@ function App() {
 
                         setSelectedAndOrderedSlugs(slugsFromExtension);
                         setInitialSelectedSlugs([...slugsFromExtension]); // For cancel
-                        setFirstLoad(false);
+                        setFirstLoad(false); // Ensure this is set to false after processing
                         console.log('React App: First load processed. Selected slugs set to:', slugsFromExtension);
                     }
-                    // For language changes, selectedAndOrderedSlugs remains the source of truth.
-                    // The useEffect below will re-calculate orderedSelectedModeObjects and currentSelectedModeIds.
-                    break;
-                case 'loadModesError':
-                    setIsLoading(false);
-                    setError(message.message || 'Unknown error loading modes.');
-                    setModesData(parseModes(MOCK_MODES_DATA_FALLBACK)); // Load fallback
-                    break;
-                case 'loadStacks':
-                    setIsStacksLoading(false);
-                    setStacksError(null);
-                    const parsedStacks = parseStacksData(message.data);
-                    console.log('React App: Parsed stacks data:', parsedStacks);
-                    setStacksData(parsedStacks);
                     break;
                 case 'loadStacksError':
                     setIsStacksLoading(false);
@@ -315,22 +228,20 @@ function App() {
         };
     }, [firstLoad]); // Only depends on firstLoad now
 
-    // NEW: Function to convert stack mode to unified Mode object
-    const stackModeToMode = useCallback((stackMode: StackMode): Mode => {
+    // NEW: Function to convert stack mode to unified StackMode object (already StackMode, but ensures consistency if needed)
+    const stackModeToMode = useCallback((stackMode: StackMode): StackMode => {
+        // In this refactored version, StackMode is the primary type.
+        // This function might seem redundant but is kept for structural similarity
+        // and in case future transformations are needed.
         return {
-            id: `unified-${stackMode.slug}`, // Use slug-based ID for consistency
-            slug: stackMode.slug,
-            fullText: stackMode.nameWithIcon,
-            nameWithIcon: stackMode.nameWithIcon,
-            description: stackMode.description || '',
-            icon: stackMode.icon,
-            name: stackMode.name
+            ...stackMode,
+            id: `unified-${stackMode.slug}`, // Ensure consistent ID prefix if used across different sources in future
         };
     }, []);
 
-    // NEW: Get all stack modes as unified Mode objects
-    const getAllStackModes = useCallback((): Mode[] => {
-        const allStackModes: Mode[] = [];
+    // NEW: Get all stack modes as unified StackMode objects
+    const getAllStackModes = useCallback((): StackMode[] => {
+        const allStackModes: StackMode[] = [];
 
         // Add from general purpose
         stacksData.generalPurpose.subgroups.forEach(subgroup => {
@@ -351,7 +262,7 @@ function App() {
         return allStackModes;
     }, [stacksData, stackModeToMode]);
 
-    // UNIFIED: Single handler for both tabs - uses slug-based selection
+    // UNIFIED: Single handler for selection - uses slug-based selection
     const handleUnifiedModeSelection = useCallback((slug: string, isSelected: boolean) => {
         console.log('handleUnifiedModeSelection:', slug, isSelected);
         setSelectedAndOrderedSlugs(prevSlugs => {
@@ -386,25 +297,17 @@ function App() {
     useEffect(() => {
         console.log('React App: Rebuilding unified selection state. Slugs:', selectedAndOrderedSlugs);
 
-        const newOrderedObjects: Mode[] = [];
-        const newSelectedIds = new Set<string>();
+        const newOrderedObjects: StackMode[] = [];
         const newSelectedStackModeIds = new Set<string>();
 
-        // Get all available modes from both sources
-        const allCustomModes = modesData;
+        // Get all available modes from stacksData
         const allStackModes = getAllStackModes();
-
-        // Update selectedIds for Custom Modes - check by slug
-        allCustomModes.forEach(mode => {
-            if (selectedAndOrderedSlugs.includes(mode.slug)) {
-                newSelectedIds.add(mode.id);
-            }
-        });
 
         // Update selectedStackModeIds for Stack Modes - check by slug
         const updateStackModeIds = (subgroups: StackSubgroup[]) => {
             subgroups.forEach(subgroup => {
                 subgroup.modes.forEach(mode => {
+                    // Ensure mode.id is used for the Set, as it's the key for UI selection state
                     if (selectedAndOrderedSlugs.includes(mode.slug)) {
                         newSelectedStackModeIds.add(mode.id);
                     }
@@ -414,36 +317,46 @@ function App() {
         updateStackModeIds(stacksData.generalPurpose.subgroups);
         stacksData.frameworks.forEach(fw => updateStackModeIds(fw.subgroups));
 
-        // Build ordered objects for chips (prioritize custom modes, then stack modes)
+        // Build ordered objects for chips from stack modes
         selectedAndOrderedSlugs.forEach(slug => {
-            // Try to find in custom modes first
-            let mode = allCustomModes.find(m => m.slug === slug);
+            const mode = allStackModes.find(m => m.slug === slug);
             if (mode) {
-                newOrderedObjects.push(mode);
-            } else {
-                // Try to find in stack modes
-                mode = allStackModes.find(m => m.slug === slug);
-                if (mode) {
-                    newOrderedObjects.push(mode);
+                // Push the original StackMode object, not the potentially ID-altered one from stackModeToMode,
+                // unless stackModeToMode is essential for other properties.
+                // For consistency, let's find the original mode from stacksData directly or ensure getAllStackModes returns original IDs.
+                // The current getAllStackModes returns `unified-${slug}` as ID. Let's adjust.
+                const originalMode = findOriginalStackModeBySlug(slug, stacksData);
+                if (originalMode) {
+                    newOrderedObjects.push(originalMode);
                 } else {
-                    console.warn(`React App: Slug "${slug}" not found in either modesData or stacksData during UI rebuild.`);
+                     console.warn(`React App: Slug "${slug}" not found in stacksData during UI rebuild for ordered objects.`);
                 }
+            } else {
+                console.warn(`React App: Slug "${slug}" not found in allStackModes during UI rebuild.`);
             }
         });
+        
+        // Helper to find original StackMode to preserve original IDs for chips
+        const findOriginalStackModeBySlug = (slug: string, data: StacksData): StackMode | undefined => {
+            for (const sg of data.generalPurpose.subgroups) {
+                const found = sg.modes.find(m => m.slug === slug);
+                if (found) return found;
+            }
+            for (const fw of data.frameworks) {
+                for (const sg of fw.subgroups) {
+                    const found = sg.modes.find(m => m.slug === slug);
+                    if (found) return found;
+                }
+            }
+            return undefined;
+        };
 
-        console.log('React App: Before setState - Custom IDs:', newSelectedIds, 'Stack IDs:', newSelectedStackModeIds);
+
+        console.log('React App: Before setState - Stack IDs:', newSelectedStackModeIds);
         setOrderedSelectedModeObjects(newOrderedObjects);
-        setCurrentSelectedModeIds(newSelectedIds);
-        setSelectedStackModeIds(newSelectedStackModeIds);
-        console.log('React App: Unified selection state updated. Objects:', newOrderedObjects.length, 'Custom IDs:', newSelectedIds.size, 'Stack IDs:', newSelectedStackModeIds.size);
-    }, [selectedAndOrderedSlugs, modesData, stacksData, getAllStackModes]);
-
-    const handleSelectionChange = (modeId: string, isSelected: boolean) => {
-        const modeObject = modesData.find(m => m.id === modeId);
-        if (!modeObject) return;
-
-        handleUnifiedModeSelection(modeObject.slug, isSelected);
-    };
+        setSelectedStackModeIds(newSelectedStackModeIds); // This is critical for subgroup checkbox state
+        console.log('React App: Unified selection state updated. Objects:', newOrderedObjects.length, 'Stack IDs:', newSelectedStackModeIds.size);
+    }, [selectedAndOrderedSlugs, stacksData, getAllStackModes]); // Added stacksData dependency
 
     const handleApply = () => {
         const selectedModesWithOrder = selectedAndOrderedSlugs.map((slug, index) => ({
@@ -464,9 +377,9 @@ function App() {
 
     const handleLanguageChange = (lang: 'en' | 'ru' | 'ua') => {
         if (currentLanguage !== lang) {
-            // Only send language, selectedAndOrderedSlugs will be preserved locally
-            vscode.postMessage({ command: 'requestModeList', lang: lang });
-            // Also request stacks data for the new language
+            setCurrentLanguage(lang); // Update language state
+            // Request stacks data for the new language
+            // selectedAndOrderedSlugs will be preserved locally
             vscode.postMessage({ command: 'requestStacksList', lang: lang });
         }
     };
@@ -594,9 +507,13 @@ function App() {
     useEffect(() => {
         if (stacksData.frameworks.length > 0 || stacksData.generalPurpose.subgroups.length > 0) {
             console.log('stacksData changed, updating subgroup selection states');
+            // updateSubgroupSelection is already called when selectedStackModeIds changes,
+            // and selectedStackModeIds changes when selectedAndOrderedSlugs or stacksData changes.
+            // Explicit call here might be redundant if dependencies are set up correctly.
+            // However, ensuring it runs after stacksData is fully parsed and set is good.
             updateSubgroupSelection();
         }
-    }, [stacksData, updateSubgroupSelection]);
+    }, [stacksData, updateSubgroupSelection]); // updateSubgroupSelection is a dependency here
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -609,7 +526,7 @@ function App() {
         const { active, over } = event;
 
         if (over && active.id !== over.id) {
-            // Update selectedAndOrderedSlugs based on drag-and-drop of Mode objects
+            // Update selectedAndOrderedSlugs based on drag-and-drop of StackMode objects
             setOrderedSelectedModeObjects((currentOrderedObjects) => {
                 const activeMode = currentOrderedObjects.find(item => item.id === active.id);
                 const overMode = currentOrderedObjects.find(item => item.id === over.id);
@@ -630,13 +547,14 @@ function App() {
 
     const canApplyOrCancel = updateButtonStates();
 
-    if (isLoading) {
-        return <div>Loading modes...</div>;
-    }
+    // Display loading state for stacks if needed, or a general loading.
+    // if (isLoading) { // isLoading was removed
+    //     return <div>Loading...</div>;
+    // }
+    // if (error) { // error was removed
+    // return <div style={{ color: 'red' }}>Error: {error}</div>;
+    // }
 
-    if (error) {
-        return <div style={{ color: 'red' }}>Error: {error}</div>;
-    }
 
     return (
         <div className="container">
@@ -645,13 +563,13 @@ function App() {
                     className={`tab${activeTab === 0 ? " active" : ""}`}
                     onClick={() => setActiveTab(0)}
                 >
-                    Roo Code Custom Modes
+                    Stacks By Framework
                 </div>
                 <div
                     className={`tab${activeTab === 1 ? " active" : ""}`}
                     onClick={() => setActiveTab(1)}
                 >
-                    Stacks By Framework
+                    New Tab (Empty)
                 </div>
             </div>
             {activeTab === 0 && (
@@ -665,59 +583,7 @@ function App() {
                                 onDragEnd={handleDragEnd}
                             >
                                 <SortableContext
-                                    items={orderedSelectedModeObjects.map(mode => mode.id)}
-                                    strategy={horizontalListSortingStrategy}
-                                >
-                                    <div id="selected-names-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '2px' }}>
-                                        {orderedSelectedModeObjects.map(mode => (
-                                            <SortableModeChip key={mode.id} mode={mode} />
-                                        ))}
-                                    </div>
-                                </SortableContext>
-                            </DndContext>
-                        </div>
-                    </header>
-                    <main>
-                        <div id="modes-list" className="modes-list">
-                            {modesData.map(mode => {
-                                const isSelected = selectedAndOrderedSlugs.includes(mode.slug);
-                                return (
-                                    <div
-                                        key={mode.id}
-                                        className={`mode-item ${isSelected ? 'selected' : ''}`}
-                                        onClick={() => handleSelectionChange(mode.id, !isSelected)}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            id={`chk-${mode.id}`}
-                                            checked={isSelected}
-                                            onChange={(e) => handleSelectionChange(mode.id, e.target.checked)}
-                                            onClick={(e) => e.stopPropagation()}
-                                            aria-label={`Select mode ${mode.nameWithIcon}`}
-                                        />
-                                        <div className="mode-content">
-                                            <span className="mode-name-display">{mode.nameWithIcon}</span>
-                                            <span className="mode-description-display"> - {mode.description}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </main>
-                </>
-            )}
-            {activeTab === 1 && (
-                <>
-                    <header>
-                        <div className="selection-summary">
-                            <p>Selected: <span id="selected-count">{orderedSelectedModeObjects.length}</span> Modes:</p>
-                            <DndContext
-                                sensors={sensors}
-                                collisionDetection={closestCenter}
-                                onDragEnd={handleDragEnd}
-                            >
-                                <SortableContext
-                                    items={orderedSelectedModeObjects.map(mode => mode.id)}
+                                    items={orderedSelectedModeObjects.map(mode => mode.id)} // Ensure mode.id is correct here
                                     strategy={horizontalListSortingStrategy}
                                 >
                                     <div id="selected-names-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '2px' }}>
@@ -759,7 +625,7 @@ function App() {
                                                             >
                                                                 <input
                                                                     type="checkbox"
-                                                                    id={`stack-mode-${mode.id}`}
+                                                                    id={`stack-mode-${mode.id}`} // Ensure unique IDs if mode.id can repeat across subgroups
                                                                     checked={isSelected}
                                                                     onChange={(e) => handleStackModeSelection(mode.id, e.target.checked)}
                                                                     onClick={(e) => e.stopPropagation()}
@@ -805,7 +671,7 @@ function App() {
                                                         }}
                                                         onClick={(e) => {
                                                             console.log('Subgroup checkbox onClick:', subgroup.id);
-                                                            e.stopPropagation();
+                                                            e.stopPropagation(); // Important to prevent subgroup click from toggling individual modes if header is also clickable
                                                         }}
                                                         aria-label={`Select subgroup ${subgroup.title}`}
                                                     />
@@ -819,13 +685,13 @@ function App() {
                                                         const isSelected = selectedAndOrderedSlugs.includes(mode.slug);
                                                         return (
                                                             <div
-                                                                key={mode.id}
+                                                                key={mode.id} // Ensure unique IDs
                                                                 className={`mode-item ${isSelected ? 'selected' : ''}`}
                                                                 onClick={() => handleStackModeSelection(mode.id, !isSelected)}
                                                             >
                                                                 <input
                                                                     type="checkbox"
-                                                                    id={`stack-mode-${mode.id}`}
+                                                                    id={`stack-mode-${mode.id}`} // Ensure unique IDs
                                                                     checked={isSelected}
                                                                     onChange={(e) => handleStackModeSelection(mode.id, e.target.checked)}
                                                                     onClick={(e) => e.stopPropagation()}
@@ -849,6 +715,9 @@ function App() {
                         )}
                     </main>
                 </>
+            )}
+            {activeTab === 1 && (
+                <div>Content for the new tab will be here.</div>
             )}
             <footer>
                 <div className="footer-inner">
