@@ -8,7 +8,7 @@ import { initializeModeManagerLogic } from './index'; // Import ModeManager init
 // import { registerCommands } from './commands'; // Uncomment when commands are ready
 import { handleApplyModeChanges } from './core/workspaceModifier'; // Added import
 import { createAndShowWebviewPanel, disposeCurrentWebviewPanel } from './ui/webviewPanelManager'; // Roo: Added new imports
-import { generateRooModesListFile } from './core/modeListGenerator'; // Roo: Added import
+// Roo: Removed generateRooModesListFile import as it's no longer used
 import { ActivityBarViewProvider } from './ui/activityBarViewProvider'; // New import
 
 // Roo: Removed archiveLoaderInstance
@@ -37,31 +37,25 @@ export async function activate(context: vscode.ExtensionContext) {
         const targetRooPath = path.join(extensionGlobalStoragePath, '.roo');
         const targetRuruPath = path.join(extensionGlobalStoragePath, '.ruru');
         const targetRoomodesPath = path.join(extensionGlobalStoragePath, '.roomodes');
-        // Roo: Define paths for new mode list files
-        const targetModesListEnPath = path.join(extensionGlobalStoragePath, 'roo_modes_list_en.md');
-        const targetModesListUaPath = path.join(extensionGlobalStoragePath, 'roo_modes_list_ua.md');
+        // Roo: Paths for mode list files (roo_modes_list_*.md) are removed as they are no longer copied.
 
         const sourceRooPath = path.join(sourceCommanderPath, '.roo');
         const sourceRuruPath = path.join(sourceCommanderPath, '.ruru');
         const sourceRoomodesPath = path.join(sourceCommanderPath, '.roomodes');
-        // Roo: Define source paths for new mode list files
-        const sourceModesListEnPath = path.join(sourceCommanderPath, 'roo_modes_list_en.md');
-        const sourceModesListUaPath = path.join(sourceCommanderPath, 'roo_modes_list_ua.md');
+        // Roo: Source paths for mode list files (roo_modes_list_*.md) are removed.
 
 
         try {
-            // Check if core components AND mode list files already exist in global storage
+            // Check if core components exist in global storage
             const rooComponentsExist = await fs.pathExists(targetRoomodesPath) &&
                 await fs.pathExists(targetRooPath) &&
                 await fs.pathExists(targetRuruPath);
-            // Roo: Check for new mode list files separately or together
-            const modeListFilesExist = await fs.pathExists(targetModesListEnPath) &&
-                await fs.pathExists(targetModesListUaPath);
+            // Roo: modeListFilesExist check is removed.
 
-            if (!rooComponentsExist || !modeListFilesExist) {
+            if (!rooComponentsExist) { // Only check for Roo components now
                 console.log('Mode-Manager-Extension: Core Roo Commander components not found in globalStorage. Copying from extension bundle...');
 
-                // Ensure source paths exist
+                // Ensure source paths exist for core components
                 if (!await fs.pathExists(sourceCommanderPath)) {
                     throw new Error(`Source roo-commander directory not found at ${sourceCommanderPath}. Cannot initialize components.`);
                 }
@@ -74,60 +68,35 @@ export async function activate(context: vscode.ExtensionContext) {
                 if (!await fs.pathExists(sourceRoomodesPath)) {
                     throw new Error(`Source .roomodes file not found at ${sourceRoomodesPath}.`);
                 }
-                // Roo: Check for new source mode list files
-                if (!await fs.pathExists(sourceModesListEnPath)) {
-                    throw new Error(`Source roo_modes_list_en.md file not found at ${sourceModesListEnPath}.`);
-                }
-                if (!await fs.pathExists(sourceModesListUaPath)) {
-                    throw new Error(`Source roo_modes_list_ua.md file not found at ${sourceModesListUaPath}.`);
-                }
+                // Roo: Checks for source mode list files are removed.
 
-                // Clear any partial old state in global storage before copying
-                // Roo: This logic was refined to only remove if components were not found,
-                // and to handle new list files separately.
-                if (!rooComponentsExist) {
-                    console.log('Mode-Manager-Extension: Clearing and copying Roo components...');
-                    if (await fs.pathExists(targetRooPath)) await fs.remove(targetRooPath);
-                    if (await fs.pathExists(targetRuruPath)) await fs.remove(targetRuruPath);
-                    if (await fs.pathExists(targetRoomodesPath)) await fs.remove(targetRoomodesPath);
+                // Clear any partial old state in global storage before copying Roo components
+                console.log('Mode-Manager-Extension: Clearing and copying Roo components...');
+                if (await fs.pathExists(targetRooPath)) await fs.remove(targetRooPath);
+                if (await fs.pathExists(targetRuruPath)) await fs.remove(targetRuruPath);
+                if (await fs.pathExists(targetRoomodesPath)) await fs.remove(targetRoomodesPath);
 
-                    await fs.copy(sourceRooPath, targetRooPath);
-                    console.log(`Mode-Manager-Extension: Copied .roo to ${targetRooPath}`);
-                    await fs.copy(sourceRuruPath, targetRuruPath);
-                    console.log(`Mode-Manager-Extension: Copied .ruru to ${targetRuruPath}`);
-                    await fs.copy(sourceRoomodesPath, targetRoomodesPath);
-                    console.log(`Mode-Manager-Extension: Copied .roomodes to ${targetRoomodesPath}`);
-                }
-
-                // Roo: Copy new mode list files if they don't exist or if core components were just copied
-                if (!modeListFilesExist) {
-                    console.log('Mode-Manager-Extension: Clearing and copying mode list files...');
-                    if (await fs.pathExists(targetModesListEnPath)) await fs.remove(targetModesListEnPath);
-                    await fs.copy(sourceModesListEnPath, targetModesListEnPath);
-                    console.log(`Mode-Manager-Extension: Copied roo_modes_list_en.md to ${targetModesListEnPath}`);
-
-                    if (await fs.pathExists(targetModesListUaPath)) await fs.remove(targetModesListUaPath);
-                    await fs.copy(sourceModesListUaPath, targetModesListUaPath);
-                    console.log(`Mode-Manager-Extension: Copied roo_modes_list_ua.md to ${targetModesListUaPath}`);
-                }
-
-                vscode.window.showInformationMessage('Mode Manager: Roo Commander components and mode lists initialized/updated from extension bundle.');
+                await fs.copy(sourceRooPath, targetRooPath);
+                console.log(`Mode-Manager-Extension: Copied .roo to ${targetRooPath}`);
+                await fs.copy(sourceRuruPath, targetRuruPath);
+                console.log(`Mode-Manager-Extension: Copied .ruru to ${targetRuruPath}`);
+                await fs.copy(sourceRoomodesPath, targetRoomodesPath);
+                console.log(`Mode-Manager-Extension: Copied .roomodes to ${targetRoomodesPath}`);
+                
+                vscode.window.showInformationMessage('Mode Manager: Roo Commander components initialized/updated from extension bundle.');
             } else {
-                console.log('Mode-Manager-Extension: Core Roo Commander components and mode lists found in globalStorage.');
+                console.log('Mode-Manager-Extension: Core Roo Commander components found in globalStorage.');
             }
 
-            // Always update globalState with the paths (either newly copied or existing)
-            // This is important because other parts of the extension rely on these paths being in globalState.
+            // Always update globalState with the paths for Roo components
             await context.globalState.update('rooCommander_rooPath', targetRooPath);
             await context.globalState.update('rooCommander_ruruPath', targetRuruPath);
             await context.globalState.update('rooCommander_roomodesPath', targetRoomodesPath);
-            // Roo: Store paths to new mode list files
-            await context.globalState.update('roo_modes_list_en_path', targetModesListEnPath);
-            await context.globalState.update('roo_modes_list_ua_path', targetModesListUaPath);
-            console.log('Mode-Manager-Extension: Paths to Roo Commander components and mode lists in globalStorage saved to globalState.');
+            // Roo: globalState updates for roo_modes_list_*.md paths are removed.
+            console.log('Mode-Manager-Extension: Paths to Roo Commander components in globalStorage saved to globalState.');
 
-            // Roo: Removed generation of roo_modes_list New.md as it's no longer needed.
-            // The new files roo_modes_list_en.md and roo_modes_list_ua.md are now bundled and copied.
+            // Roo: Removed generation and copying logic for roo_modes_list_*.md files.
+            // Stacks_by_framework_*.md files are part of the extension bundle and read directly, not copied.
 
         } catch (error: any) {
             console.error('Mode-Manager-Extension: Error initializing Roo Commander components from extension bundle:', error);
@@ -186,7 +155,7 @@ export function deactivate() {
 
 // Roo: Function handleLoadRooCommanderArchive removed as archive loading functionality is deprecated.
 
-// Roo: Function generateRooModesListFile has been moved to core/modeListGenerator.ts
+// Roo: Function generateRooModesListFile was removed as it's no longer used.
 
 // Function to encapsulate data loading and sending logic (if needed to call from multiple places)
 /*
