@@ -466,28 +466,60 @@ function App() {
     const updateSubgroupSelection = useCallback(() => {
         console.log('updateSubgroupSelection called, selectedStackModeIds:', selectedStackModeIds);
         setStacksData(prev => {
-            const updated = JSON.parse(JSON.stringify(prev)); // Deep clone
+            // Manual deep clone to ensure modes arrays are preserved
+            const manuallyClonedGeneralPurposeSubgroups = prev.generalPurpose.subgroups.map(sg => ({
+                ...sg,
+                modes: sg.modes.map(m => ({ ...m })), // Clone each mode
+                selected: false, // Will be recalculated
+                partiallySelected: false, // Will be recalculated
+            }));
 
-            const updateSubgroupsInFramework = (framework: StackFramework) => {
+            const manuallyClonedFrameworks = prev.frameworks.map(fw => ({
+                ...fw,
+                subgroups: fw.subgroups.map(sg => ({
+                    ...sg,
+                    modes: sg.modes.map(m => ({ ...m })), // Clone each mode
+                    selected: false, // Will be recalculated
+                    partiallySelected: false, // Will be recalculated
+                })),
+            }));
+            
+            const updatedStacksData: StacksData = {
+                generalPurpose: {
+                    ...prev.generalPurpose,
+                    subgroups: manuallyClonedGeneralPurposeSubgroups,
+                },
+                frameworks: manuallyClonedFrameworks,
+            };
+
+            const updateSelectionStatesInFramework = (framework: StackFramework) => {
                 framework.subgroups.forEach(subgroup => {
-                    const selectedCount = subgroup.modes.filter(mode =>
+                    // Ensure subgroup.modes is an array before filtering
+                    const modesArray = Array.isArray(subgroup.modes) ? subgroup.modes : [];
+                    const selectedCount = modesArray.filter(mode =>
                         selectedStackModeIds.has(mode.id)
                     ).length;
 
-                    const oldSelected = subgroup.selected;
-                    const oldPartiallySelected = subgroup.partiallySelected;
-
-                    subgroup.selected = selectedCount === subgroup.modes.length && subgroup.modes.length > 0;
-                    subgroup.partiallySelected = selectedCount > 0 && selectedCount < subgroup.modes.length;
-
-                    console.log(`Subgroup ${subgroup.id}: selectedCount=${selectedCount}, totalCount=${subgroup.modes.length}, selected=${subgroup.selected}, partiallySelected=${subgroup.partiallySelected}`);
+                    subgroup.selected = selectedCount === modesArray.length && modesArray.length > 0;
+                    subgroup.partiallySelected = selectedCount > 0 && selectedCount < modesArray.length;
+                    
+                    console.log(`Subgroup ${subgroup.id} (${subgroup.fullTitle}): selectedCount=${selectedCount}, totalCount=${modesArray.length}, selected=${subgroup.selected}, partiallySelected=${subgroup.partiallySelected}, Modes:`, JSON.stringify(modesArray.map(m => m.slug)));
                 });
             };
 
-            updateSubgroupsInFramework(updated.generalPurpose);
-            updated.frameworks.forEach(updateSubgroupsInFramework);
+            updateSelectionStatesInFramework(updatedStacksData.generalPurpose);
+            updatedStacksData.frameworks.forEach(updateSelectionStatesInFramework);
+            
+            // --- Debugging Start ---
+            console.log('DEBUG: updateSubgroupSelection - updated object:', JSON.stringify(updatedStacksData, null, 2));
+            if (updatedStacksData.frameworks.some((fw: StackFramework) => !fw.subgroups || fw.subgroups.some((sg: StackSubgroup) => !sg.modes || !Array.isArray(sg.modes)))) {
+                console.error('DEBUG: updateSubgroupSelection - Problem detected: modes/subgroups missing or not arrays before return');
+            } else {
+                console.log('DEBUG: updateSubgroupSelection - No problem detected with modes/subgroups arrays before return.');
+            }
+            // --- Debugging End ---
 
-            return updated;
+            return updatedStacksData;
         });
     }, [selectedStackModeIds]);
 
