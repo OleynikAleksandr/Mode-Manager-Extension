@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 // Roo: Removed ArchiveLoader import as it's no longer used
 import { handleApplyModeChanges } from '../core/workspaceModifier'; // Adjusted import path
-import { generateRooModesListFile } from '../core/modeListGenerator'; // Roo: Added import
+// Roo: Removed generateRooModesListFile import as it's no longer used
 
 // Roo: Removed HandleLoadRooCommanderArchiveFunction type
 // Roo: Removed GenerateRooModesListFileFunction type
@@ -71,22 +71,6 @@ export async function createAndShowWebviewPanel(
 ) {
     console.log('Mode-Manager-Extension (webviewPanelManager): createAndShowWebviewPanel called.');
     const storagePath = context.globalStorageUri.fsPath;
-    // Roo: Paths to components in globalStorage, should always exist due to new logic in extension.ts activate
-    // Roo: Default to English mode list. Language switching will be handled later.
-    const defaultModesListFileName = 'roo_modes_list_en.md';
-    const modesListFilePath = path.join(storagePath, defaultModesListFileName);
-
-    // Roo: Logic for generating 'roo_modes_list New.md' is removed.
-    // The new files are copied during extension activation.
-    // We now just check if the default English list file exists.
-    const modesListExists = await fs.pathExists(modesListFilePath);
-
-    if (!modesListExists) {
-        vscode.window.showErrorMessage(`Mode Manager: '${defaultModesListFileName}' not found in ${storagePath}. Cannot display modes. Please ensure the extension installed correctly.`);
-        console.error(`Mode-Manager-Extension (webviewPanelManager): File ${defaultModesListFileName} not found at path: ${modesListFilePath}`);
-        return; // Critical if list cannot be found
-    }
-
     const column = vscode.window.activeTextEditor
         ? vscode.window.activeTextEditor.viewColumn
         : undefined;
@@ -110,8 +94,8 @@ export async function createAndShowWebviewPanel(
 
     currentWebviewPanel.webview.html = getWebviewContent(context, currentWebviewPanel.webview);
 
-    // Load initial data
-    await loadAndSendData(currentWebviewPanel, context, 'en');
+    // Initial data will be loaded by App.tsx sending 'requestStacksList' after 'webviewReady'
+    // No need to call loadAndSendData here anymore.
 
     // Handle messages from the webview
     currentWebviewPanel.webview.onDidReceiveMessage(
@@ -129,61 +113,47 @@ export async function createAndShowWebviewPanel(
                     return;
                 case 'webviewReady':
                     console.log('Mode-Manager-Extension (webviewPanelManager): Webview is ready to receive data.');
-                    // Initial load is handled after panel creation, this confirms webview is listening.
-                    return;
-                case 'requestModeList':
-                    console.log(`Mode-Manager-Extension (webviewPanelManager): Received request for mode list in language: ${message.lang}`);
-                    try {
-                        const lang = message.lang === 'ru' ? 'ru' : message.lang === 'ua' ? 'ua' : 'en'; // Sanitize lang
-                        const requestedModesListFileName = `roo_modes_list_${lang}.md`;
-                        // Retrieve path from globalState, falling back to constructing it if not found (though it should be there)
-                        let requestedModesListFilePath = context.globalState.get<string>(`roo_modes_list_${lang}_path`);
-                        if (!requestedModesListFilePath) {
-                            console.warn(`Path for roo_modes_list_${lang}.md not found in globalState, constructing from globalStorageUri.`);
-                            requestedModesListFilePath = path.join(context.globalStorageUri.fsPath, requestedModesListFileName);
-                        }
-
-                        if (await fs.pathExists(requestedModesListFilePath)) {
-                            const modesContent = await fs.readFile(requestedModesListFilePath, 'utf-8');
-                            currentWebviewPanel?.webview.postMessage({
-                                command: 'loadModes',
-                                data: modesContent,
-                                // For language switch, we might want to re-evaluate selected modes
-                                // or just refresh the list and let the UI handle selection state.
-                                // App.tsx will now preserve its own selection state based on slugs.
-                                // We only need to send the new list content and language.
-                                // selectedModesOrdered here refers to the initial load from .roomodes,
-                                // which is not relevant for a language switch after initial load.
-                                selectedModesOrdered: undefined, // Or simply omit this line
-                                language: lang
-                            });
-                        } else {
-                            console.error(`Mode-Manager-Extension (webviewPanelManager): File ${requestedModesListFileName} not found at path: ${requestedModesListFilePath}`);
-                            currentWebviewPanel?.webview.postMessage({
-                                command: 'loadModesError',
-                                message: `Failed to load mode list (${requestedModesListFileName} not found).`
-                            });
-                        }
-                    } catch (e: any) {
-                        console.error(`Mode-Manager-Extension (webviewPanelManager): Error reading ${message.lang} mode list file:`, e);
-                        currentWebviewPanel?.webview.postMessage({
-                            command: 'loadModesError',
-                            message: `Error reading mode list file for language ${message.lang}.`
-                        });
-                    }
+                    // App.tsx will now send 'requestStacksList' to trigger initial data load.
                     return;
                 case 'requestStacksList':
                     console.log(`Mode-Manager-Extension (webviewPanelManager): Received request for stacks list in language: ${message.lang}`);
                     try {
                         const lang = message.lang === 'ru' ? 'ru' : message.lang === 'ua' ? 'ua' : 'en'; // Sanitize lang
                         const requestedStacksFileName = `stacks_by_framework_${lang}.md`;
+                        // Stacks files are in extensionPath/roo-commander, not globalStorageUri
                         const requestedStacksFilePath = path.join(context.extensionPath, 'roo-commander', requestedStacksFileName);
+
+                        let initiallySelectedModesOrdered: Array<{ slug: string, order: number }> = [];
+                        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+                            const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+                            const workspaceRoomodesPath = path.join(workspaceRoot, '.roomodes');
+                            if (await fs.pathExists(workspaceRoomodesPath)) {
+                                try {
+                                    const roomodesFileContent = await fs.readFile(workspaceRoomodesPath, 'utf-8');
+                                    const parsedRoomodes = JSON.parse(roomodesFileContent);
+                                    if (parsedRoomodes && Array.isArray(parsedRoomodes.customModes)) {
+                                        initiallySelectedModesOrdered = parsedRoomodes.customModes
+                                            .map((mode: any, index: number) => {
+                                                if (mode && typeof mode.slug === 'string') {
+                                                    return { slug: mode.slug, order: index };
+                                                }
+                                                return null;
+                                            })
+                                            .filter((item: { slug: string, order: number } | null): item is { slug: string, order: number } => item !== null);
+                                        console.log(`Mode-Manager-Extension (webviewPanelManager - requestStacksList): Loaded modes with order from ${workspaceRoomodesPath}:`, initiallySelectedModesOrdered);
+                                    }
+                                } catch (err) {
+                                    console.error(`Mode-Manager-Extension (webviewPanelManager - requestStacksList): Error reading or parsing ${workspaceRoomodesPath}:`, err);
+                                }
+                            }
+                        }
 
                         if (await fs.pathExists(requestedStacksFilePath)) {
                             const stacksContent = await fs.readFile(requestedStacksFilePath, 'utf-8');
                             currentWebviewPanel?.webview.postMessage({
                                 command: 'loadStacks',
                                 data: stacksContent,
+                                selectedModesOrdered: initiallySelectedModesOrdered, // Send initial selection state
                                 language: lang
                             });
                         } else {
@@ -201,7 +171,6 @@ export async function createAndShowWebviewPanel(
                         });
                     }
                     return;
-                // Roo: Removed 'loadRooCommanderArchive' case, as this functionality is being removed.
             }
         },
         undefined,
@@ -213,9 +182,9 @@ export async function createAndShowWebviewPanel(
         async e => {
             const panel = e.webviewPanel;
             if (panel.visible) {
-                console.log('Mode-Manager-Extension (webviewPanelManager): Panel became visible. Reloading data.');
-                // Reload data, defaulting to 'en'. UI can request specific lang if needed.
-                await loadAndSendData(panel, context, 'en');
+                console.log('Mode-Manager-Extension (webviewPanelManager): Panel became visible. App.tsx should request data if needed.');
+                // No longer call loadAndSendData. App.tsx will send 'requestStacksList'
+                // if it determines it needs to reload data (e.g., if its state is empty or stale).
             }
         },
         null,
@@ -231,63 +200,7 @@ export async function createAndShowWebviewPanel(
     );
 }
 
-// Helper function to load and send data to the webview
-async function loadAndSendData(panel: vscode.WebviewPanel, context: vscode.ExtensionContext, language: 'en' | 'ru' | 'ua') {
-    const storagePath = context.globalStorageUri.fsPath;
-    const modesListFileName = `roo_modes_list_${language}.md`;
-    const modesListFilePath = path.join(storagePath, modesListFileName);
-
-    console.log(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): Attempting to load mode list for webview from: ${modesListFilePath}`);
-
-    try {
-        if (await fs.pathExists(modesListFilePath)) {
-            const modesContent = await fs.readFile(modesListFilePath, 'utf-8');
-            let initiallySelectedModesOrdered: Array<{ slug: string, order: number }> = [];
-
-            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-                const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
-                const workspaceRoomodesPath = path.join(workspaceRoot, '.roomodes');
-                console.log(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): Checking for .roomodes at ${workspaceRoomodesPath}`);
-                if (await fs.pathExists(workspaceRoomodesPath)) {
-                    try {
-                        const roomodesFileContent = await fs.readFile(workspaceRoomodesPath, 'utf-8');
-                        const parsedRoomodes = JSON.parse(roomodesFileContent);
-                        if (parsedRoomodes && Array.isArray(parsedRoomodes.customModes)) {
-                            initiallySelectedModesOrdered = parsedRoomodes.customModes
-                                .map((mode: any, index: number) => {
-                                    if (mode && typeof mode.slug === 'string') {
-                                        return { slug: mode.slug, order: index };
-                                    }
-                                    return null;
-                                })
-                                .filter((item: { slug: string, order: number } | null): item is { slug: string, order: number } => item !== null);
-                            console.log(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): Loaded modes with order from ${workspaceRoomodesPath}:`, initiallySelectedModesOrdered);
-                        } else {
-                            console.warn(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): .roomodes file at ${workspaceRoomodesPath} does not have a 'customModes' array.`);
-                        }
-                    } catch (err) {
-                        console.error(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): Error reading or parsing ${workspaceRoomodesPath}:`, err);
-                    }
-                } else {
-                    console.log(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): File ${workspaceRoomodesPath} not found.`);
-                }
-            } else {
-                console.log('Mode-Manager-Extension (webviewPanelManager - loadAndSendData): No workspace folder open.');
-            }
-
-            console.log(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): Posting 'loadModes' to webview. Language: ${language}, Selected Modes Ordered:`, initiallySelectedModesOrdered, "Data length:", modesContent?.length);
-            panel.webview.postMessage({ command: 'loadModes', data: modesContent, selectedModesOrdered: initiallySelectedModesOrdered, language: language });
-        } else {
-            console.error(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): File ${modesListFileName} not found at path: ${modesListFilePath}`);
-            vscode.window.showErrorMessage(`File ${modesListFileName} not found.`);
-            panel.webview.postMessage({ command: 'loadModesError', message: `Failed to load mode list (${modesListFileName} not found).` });
-        }
-    } catch (e: any) {
-        console.error(`Mode-Manager-Extension (webviewPanelManager - loadAndSendData): Error reading ${modesListFileName}:`, e);
-        vscode.window.showErrorMessage('Error reading mode list file.');
-        panel.webview.postMessage({ command: 'loadModesError', message: 'Error reading mode list file.' });
-    }
-}
+// loadAndSendData function is now removed.
 
 export function disposeCurrentWebviewPanel() {
     if (currentWebviewPanel) {
