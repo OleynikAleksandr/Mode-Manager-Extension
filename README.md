@@ -23,7 +23,7 @@ A big thank you to **Jeremy Dawes** ([https://github.com/jezweb](https://github.
 
 ## Installation
 
-1.  Download the latest version of the extension in `.vsix` format from the [releases page](https://github.com/OleynikAleksandr/Mode-Manager-Extension/releases/tag/0.4.1).
+1.  Download the latest version of the extension in `.vsix` format from the [releases page](https://github.com/OleynikAleksandr/Mode-Manager-Extension/releases).
 2.  Open VS Code.
 3.  Go to the Extensions view (Ctrl+Shift+X).
 4.  Click the three dots (...) in the upper right corner of the Extensions view.
